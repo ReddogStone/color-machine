@@ -1,0 +1,231 @@
+<html>
+<head>
+<script src="utils.js" type="text/javascript"></script>
+<script src="rdp.js" type="text/javascript"></script>
+<script src="block.js" type="text/javascript"></script>
+<script src="ball.js" type="text/javascript"></script>
+<script src="state.js" type="text/javascript"></script>
+<script src="color.js" type="text/javascript"></script>
+<script src="v2.js" type="text/javascript"></script>
+<script src="time.js" type="text/javascript"></script>
+<script src="state-machine.js" type="text/javascript"></script>
+<script src="behaviors.js" type="text/javascript"></script>
+</head>
+<script type="text/javascript">
+	function extractMouseCoords(canvas, event) {
+		// get canvas position
+		var obj = canvas;
+		var top = 0;
+		var left = 0;
+		while (obj && obj.tagName != 'BODY') {
+			top += obj.offsetTop;
+			left += obj.offsetLeft;
+			obj = obj.offsetParent;
+		}
+
+		// return relative mouse position
+		var mouseX = event.clientX - left + window.pageXOffset;
+		var mouseY = event.clientY - top + window.pageYOffset;
+		return {
+			x: mouseX,
+			y: mouseY
+		};
+	}
+
+	function registerMouseEvent(domObj, name, fire) {
+		domObj.addEventListener(name, function(event) {
+			fire(extractMouseCoords(domObj, event));
+		}, false);
+	}
+
+	function pointInRect(point, rect) {
+		var dx = point.x - rect.x;
+		var dy = point.y - rect.y;
+		return (dx >= 0) && (dx < rect.sx) && (dy >= 0) && (dy < rect.sy);
+	}
+
+	var g_stateMachine = CM.StateMachine.construct();
+
+	var g_blocks = [
+		CM.BlockBody.construct([300, 200], [100, 50], [0.0, 0.0, 1.0, 1.0])
+	];
+	var g_balls = [
+		CM.BallBody.construct([100, 300], 25, [1.0, 0.0, 0.0, 1.0])
+	];
+
+	function clear(context) {
+		context.fillStyle = "white";
+		context.fillRect(0, 0, 1e9, 1e9);
+	}
+
+	function drawBlock(context, pos, size, fillColor, strokeColor, lineWidth) {
+		context.fillStyle = fillColor;
+		context.strokeStyle = strokeColor;
+		context.lineWidth = lineWidth;
+
+		context.beginPath();
+		context.rect(pos.x - size.x * 0.5 , pos.y - size.y * 0.5, size.x, size.y);
+		context.fill();
+		context.stroke();
+	}
+
+	function drawBall(context, pos, radius, fillColor, strokeColor, lineWidth) {
+		context.fillStyle = fillColor;
+		context.strokeStyle = strokeColor;
+		context.lineWidth = lineWidth;
+
+		context.beginPath();
+		context.arc(pos.x, pos.y, radius, 0, 2 * Math.PI, false);
+		context.fill();
+		context.stroke();
+	}
+
+	function drawText(context, pos, text, color) {
+		context.font = "bold 1em sans-serif";
+		context.fillStyle = color;
+		context.textAlign = 'center';
+		context.textBaseline = 'middle';
+		context.fillText(text, pos.x, pos.y);
+	}
+
+	function frame(context) {
+		var t = performance.now();
+
+		clear(context);
+		var balls = g_stateMachine.balls;
+		for (var i = 0; i < balls.length; i++) {
+			var ball = balls[i].body;
+			drawBall(context, 
+				ball.pos, 
+				ball.radius, 
+				ball.color.toCSS(),
+				ball.color.scale(0.2).toCSS(),
+				3);
+		}
+		var freeBlocks = g_stateMachine.freeBlocks;
+		for (var i = 0; i < freeBlocks.length; i++) {
+			var block = freeBlocks[i].body;
+			drawBlock(context, 
+				block.pos,
+				block.size, 
+				block.color.toCSS(),
+				block.color.scale(0.2).toCSS(),
+				3);
+		}
+		var boundBlocks = g_stateMachine.boundBlocks;
+		for (var i = 0; i < boundBlocks.length; i++) {
+			var block = boundBlocks[i];
+			var body = block.body;
+			drawBlock(context,
+				body.pos,
+				body.size,
+				body.color.toCSS(),
+				body.color.scale(0.2).toCSS(),
+				3);
+		}
+	}
+
+	function buttonState(target) {
+		return function(value) {
+			target(value);
+		};
+	}
+
+	function offset(stateSignal, mousePosSignal, object) {
+		var result = RDP.signal();
+		stateSignal.onValue(function(value) {
+			if (value == 'down') {
+				var mousePos = mousePosSignal.get();
+				if (object.pointInside(mousePos)) {
+					var objPos = object.pos;
+					return result.set({
+						x: objPos.x - mousePos.x,
+						y: objPos.y - mousePos.y,
+					});
+				}
+			}
+
+			result.set();
+		});
+		return result;
+	}
+
+	function drag(mousePosSignal, offsetSignal) {
+		var result = RDP.signal();
+		mousePosSignal.onValue(function(value) {
+			var offset = offsetSignal.get();
+			if (offset) {
+				result.set({
+					x: value.x + offset.x,
+					y: value.y + offset.y
+				});
+			}
+		});
+		return result;
+	}
+
+	function makeDrag(object, mousePosSignal, mouseStateSignal) {
+		drag(
+			mousePosSignal,
+			offset(
+				mouseStateSignal,
+				mousePosSignal,
+				object))
+		.onValue(function(value) {
+			object.pos = value;
+		});
+	}
+
+	window.onload = function() {
+		var canvas = document.getElementById("myCanvas");
+		var context = canvas.getContext('2d');
+
+		g_stateMachine.setBalls([0, 1, 2, 1, 0, 1, 2, 0]);
+		g_stateMachine.setFreeBlocks([
+			CM.State.construct(0, {'0': -2}),
+			CM.State.construct(1, {'1': 1}),
+			CM.State.construct(2, {'2': 2}),
+		]);
+		g_stateMachine.bindBlock(g_stateMachine.freeBlocks[0]);
+		g_stateMachine.bindBlock(g_stateMachine.freeBlocks[0]);
+		g_stateMachine.bindBlock(g_stateMachine.freeBlocks[0]);
+		g_stateMachine.start();
+
+/*		var dragAll = broadcast([g_button, g_strangeBlock].map(drag));
+
+		registerMouseEvent(canvas, 'mousedown', function(e) {
+			dragAll({type: 'start', value: e});
+		});
+		registerMouseEvent(canvas, 'mousemove', function(e) {
+			dragAll({type: 'progress', value: e});
+		});
+		registerMouseEvent(canvas, 'mouseup', function(e) {
+			dragAll({type: 'stop', value: e});
+		});
+
+		var mousePos = RDP.signal({x: 0, y: 0});
+		var buttonState = RDP.signal('up');
+		makeDrag(g_button, mousePos, buttonState);
+		makeDrag(g_strangeBlock, mousePos, buttonState);
+
+		registerMouseEvent(canvas, 'mousedown', function(e) {
+			buttonState.set('down');
+		});
+		registerMouseEvent(canvas, 'mouseup', function(e) {
+			buttonState.set('up');
+		});
+		registerMouseEvent(canvas, 'mousemove', mousePos.set); */
+
+		(function animate() {
+			frame(context);
+			requestAnimationFrame(animate);
+		})();
+	};
+
+</script>
+<body>
+	<div style="border-style: solid; border-width: thick; width: 1024px; height: 768px">
+		<canvas id="myCanvas" width="1024" height="768"></canvas>
+	</div>
+</body>
+</html>
