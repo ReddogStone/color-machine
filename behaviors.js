@@ -8,6 +8,25 @@ var CM = (function(exports) {
 			res.endT = endT || Number.POSITIVE_INFINITY;
 			return res;
 		},
+		followTargetV2: function(beginValue, getTarget, getHalfTime) {
+			var currentT = CM.Time.now();
+			var currentValue = beginValue;
+			var res = function() {
+				var t = CM.Time.now();
+				var dt = (t - currentT) / 1000.0;
+				currentT = t;
+				var percentage = Math.pow(0.5, dt / getHalfTime());
+				var target = getTarget();
+				currentValue = CM.V2.construct(
+					currentValue.x * percentage + target.x * (1 - percentage),
+					currentValue.y * percentage + target.y * (1 - percentage)
+				);
+				return currentValue;
+			};
+			res.beginT = 0;
+			res.endT = Number.POSITIVE_INFINITY;
+			return res;
+		},
 		linearV2: function(beginT, endT, beginValue, endValue) {
 			beginValue = CM.V2.construct(beginValue);
 			endValue = CM.V2.construct(endValue);

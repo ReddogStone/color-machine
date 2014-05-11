@@ -24,9 +24,13 @@ var CM = (function(exports) {
 	var BALL_SPEED = 200;
 	var BLOCK_SPEED = 50;
 
+	function ballPosition(index) {
+		return CM.V2.construct(BALL_OFF_X + index * (BALL_RADIUS * 2 + BALL_MARGIN), BALL_OFF_Y);
+	}
+
 	function initBall(index, id) {
 		var body = CM.BallBody.construct(
-			[BALL_OFF_X + index * (BALL_RADIUS * 2 + BALL_MARGIN), BALL_OFF_Y],
+			ballPosition(index),
 			BALL_RADIUS);
 		return {
 			id: id,
@@ -51,7 +55,7 @@ var CM = (function(exports) {
 	}
 
 	function positionBlock(index, block) {
-		block.body.pos = CM.V2.construct([BLOCK_OFF_X, BLOCK_OFF_Y - index * (BLOCK_SY + BLOCK_MARGIN)]);
+		block.body.pos = blockPosition(index);
 	}
 
 	function nextBallBehavior(ball, beginT) {
@@ -182,6 +186,7 @@ var CM = (function(exports) {
 
 	exports.StateMachine = {
 		init: function() {
+			this._initialBallIds = [];
 			this.balls = [];
 			this.boundBlocks = [];
 			this.freeBlocks = [];
@@ -189,6 +194,7 @@ var CM = (function(exports) {
 		setBalls: function(ids) {
 			for (var i = 0; i < ids.length; i++) {
 				var id = ids[i];
+				this._initialBallIds.push(id);
 				this.balls.push(initBall(i, id));
 			}
 		},
@@ -258,6 +264,38 @@ var CM = (function(exports) {
 					get: CM.Behaviors.merge(block.behaviors)
 				});
 			}
+		},
+		reset: function() {
+			for (var i = 0; i < this.balls.length; i++) {
+				var ball = this.balls[i];
+				var body = ball.body;
+				Object.defineProperty(body, 'pos', {
+					configurable: true,
+					writable: true,
+					value: ballPosition(i)
+				});
+				Object.defineProperty(ball, 'id', {
+					configurable: true,
+					writable: true,
+					value: this._initialBallIds[i]
+				});
+			}
+			for (var i = 0; i < this.boundBlocks.length; i++) {
+				var block = this.boundBlocks[i];
+				var body = block.body;
+				Object.defineProperty(body, 'pos', {
+					configurable: true,
+					writable: true,
+					value: blockPosition(i)
+				});
+			}
+		},
+		ballPosition: function(index) {
+			return ballPosition(index);
+		},
+		reorderBalls: function(balls) {
+			this.balls = balls.slice();
+			this._initialBallIds = this.balls.map(function(ball) { return ball.id; });
 		}
 	};
 

@@ -45,13 +45,32 @@
 	}
 
 	var g_stateMachine = CM.StateMachine.construct();
+	var g_startButton = {
+		pos: CM.V2.construct(512, 700),
+		size: CM.V2.construct(200, 100),
+		text: 'Start',
+		colors: {
+			up: CM.Color.construct(1, 1, 1, 1),
+			down: CM.Color.construct(0.3, 0.3, 0.3, 1),
+			hovered: CM.Color.construct(0.8, 0.8, 0.8, 1),
+		},
+		down: false,
+		hovered: false,
+		rect: function() {
+			var pos = this.pos;
+			var size = this.size;
+			return {
+				x: pos.x - 0.5 * size.x,
+				y: pos.y - 0.5 * size.y,
+				sx: size.x,
+				sy: size.y
+			};
+		},
+		pointInside: function(point) {
+			return pointInRect(point, this.rect());
+		}
 
-	var g_blocks = [
-		CM.BlockBody.construct([300, 200], [100, 50], [0.0, 0.0, 1.0, 1.0])
-	];
-	var g_balls = [
-		CM.BallBody.construct([100, 300], 25, [1.0, 0.0, 0.0, 1.0])
-	];
+	};
 
 	function clear(context) {
 		context.fillStyle = "white";
@@ -113,6 +132,7 @@
 				CM.V2.construct(sx * TRANS_PERCENTAGE, body.size.y));
 		}
 	}
+
 	function drawBlockBody(context, block) {
 		var body = block.body;
 		var transitionCount = Object.keys(block.state.transitions).length;
@@ -126,6 +146,16 @@
 			color.toCSS(),
 			color.scale(0.2).toCSS(),
 			3);
+	}
+
+	function drawButton(context, button) {
+		var state = 'up';
+		if (button.hovered) {
+			state = button.down ? 'down' : 'hovered';
+		}
+		var color = button.colors[state];
+		drawBlock(context, button.pos, button.size, color.toCSS(), 'black', 3);
+		drawText(context, button.pos, button.text, 'black');
 	}
 
 	function frame(context) {
@@ -162,6 +192,8 @@
 			drawBlockBody(context, block);
 			drawTransitions(context, block);
 		}
+
+		drawButton(context, g_startButton);
 	}
 
 	function buttonState(target) {
@@ -203,15 +235,60 @@
 		return result;
 	}
 
-	function makeDrag(object, mousePosSignal, mouseStateSignal) {
-		drag(
-			mousePosSignal,
-			offset(
-				mouseStateSignal,
-				mousePosSignal,
-				object))
-		.onValue(function(value) {
-			object.pos = value;
+	var g_currentBalls = [];
+	var g_ballTargets = [];
+
+	function squareDist(from, to) {
+		var dx = to.x - from.x;
+		var dy = to.y - from.y;
+		return dx * dx + dy * dy;
+	}
+
+	function makeDrag(ball, mousePosSignal, mouseStateSignal) {
+		var object = ball.body;
+		var target = null;
+		var halfTime = 0.01;
+		var currentIndex = g_currentBalls.indexOf(ball);
+		Object.defineProperty(object, 'pos', {
+			configurable: true,
+			get: CM.Behaviors.followTargetV2(object.pos, 
+				function() { return target || g_ballTargets[g_currentBalls.indexOf(ball)]; }, 
+				function() { return halfTime; })
+		});
+		var offsetSignal = offset(mouseStateSignal, mousePosSignal, object);
+		offsetSignal.onValue(function(offsetValue) {
+			if (offsetValue) {
+				halfTime = 0.01;
+			} else {
+				var index = g_currentBalls.indexOf(ball);
+				if (index == -1) {
+					g_currentBalls.splice(currentIndex, 0, ball);
+				} else {
+					g_stateMachine.reorderBalls(g_currentBalls);
+					currentIndex = index;
+				}
+				target = null;
+				halfTime = 0.1;
+			}
+		});
+
+		drag(mousePosSignal, offsetSignal).onValue(function(value) {
+			target = value;
+			var myIndex = g_currentBalls.indexOf(ball);
+			if (myIndex >= 0) {
+				var bindTarget = g_ballTargets[myIndex];
+				if (squareDist(bindTarget, value) > 50 * 50) {
+					g_currentBalls.splice(myIndex, 1);
+				}
+			} else {
+				for (var i = 0; i < g_ballTargets.length; i++) {
+					var ballTarget = g_ballTargets[i];
+					if (squareDist(ballTarget, value) < 50 * 50) {
+						g_currentBalls.splice(i, 0, ball);
+						break;
+					}
+				}
+			}
 		});
 	}
 
@@ -221,14 +298,34 @@
 
 		g_stateMachine.setBalls([0, 1, 2, 1, 0, 1, 2, 0]);
 		g_stateMachine.setFreeBlocks([
-			CM.State.construct(0, {'1': -1, '2': 1}),
-			CM.State.construct(1, {'2': 1}),
-			CM.State.construct(2, {'0': 2}),
+			CM.State.construct(0, {'0': 0, '1': -1, '2': 1}),
+			CM.State.construct(1, {'0': 0, '1': 0, '2': 1}),
+			CM.State.construct(2, {'0': 1, '1': 0, '2': 0}),
 		]);
 		g_stateMachine.bindBlock(g_stateMachine.freeBlocks[0]);
 		g_stateMachine.bindBlock(g_stateMachine.freeBlocks[0]);
 		g_stateMachine.bindBlock(g_stateMachine.freeBlocks[0]);
-		g_stateMachine.start();
+
+		registerMouseEvent(canvas, 'mousedown', function(e) {
+			if (g_startButton.pointInside(e)) {
+				g_startButton.down = true;
+			}
+		});
+		registerMouseEvent(document, 'mouseup', function(e) {
+			if (g_startButton.down && g_startButton.hovered) {
+				if (g_startButton.text == 'Start') {
+					g_stateMachine.start();
+					g_startButton.text = 'Reset';
+				} else {
+					g_stateMachine.reset();
+					g_startButton.text = 'Start';
+				}
+			}
+			g_startButton.down = false;
+		});
+		registerMouseEvent(canvas, 'mousemove', function(e) {
+			g_startButton.hovered = g_startButton.pointInside(e);
+		});
 
 /*		var dragAll = broadcast([g_button, g_strangeBlock].map(drag));
 
@@ -240,12 +337,18 @@
 		});
 		registerMouseEvent(canvas, 'mouseup', function(e) {
 			dragAll({type: 'stop', value: e});
-		});
+		}); */
 
 		var mousePos = RDP.signal({x: 0, y: 0});
 		var buttonState = RDP.signal('up');
-		makeDrag(g_button, mousePos, buttonState);
-		makeDrag(g_strangeBlock, mousePos, buttonState);
+
+		for (var i = 0; i < g_stateMachine.balls.length; i++) {
+			g_currentBalls.push(g_stateMachine.balls[i]);
+			g_ballTargets.push(g_stateMachine.ballPosition(i));
+		}
+		for (var i = 0; i < g_stateMachine.balls.length; i++) {
+			makeDrag(g_stateMachine.balls[i], mousePos, buttonState);
+		}
 
 		registerMouseEvent(canvas, 'mousedown', function(e) {
 			buttonState.set('down');
@@ -253,7 +356,7 @@
 		registerMouseEvent(canvas, 'mouseup', function(e) {
 			buttonState.set('up');
 		});
-		registerMouseEvent(canvas, 'mousemove', mousePos.set); */
+		registerMouseEvent(canvas, 'mousemove', mousePos.set);
 
 		(function animate() {
 			frame(context);
