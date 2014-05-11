@@ -2,8 +2,9 @@ var CM = (function(exports) {
 	var COLORS = [
 		[1.0, 0.0, 0.0, 1.0],
 		[0.0, 0.0, 1.0, 1.0],
-		[0.0, 1.0, 0.0, 1.0]
+		[0.0, 0.5, 0.0, 1.0]
 	];
+	exports.COLORS = COLORS;
 
 	var BALL_OFF_X = 50;
 	var BALL_OFF_Y = 500;
@@ -13,8 +14,8 @@ var CM = (function(exports) {
 
 	var BLOCK_OFF_X = 512;
 	var BLOCK_OFF_Y = 400;
-	var BLOCK_SX = 100;
-	var BLOCK_SY = 50;
+	var BLOCK_SX = 150;
+	var BLOCK_SY = 75;
 	var BLOCK_MARGIN = 5;
 
 	var FREE_BLOCK_OFF_X = 80;
@@ -25,9 +26,8 @@ var CM = (function(exports) {
 
 	function initBall(index, id) {
 		var body = CM.BallBody.construct(
-			CM.V2.construct(BALL_OFF_X + index * (BALL_RADIUS * 2 + BALL_MARGIN), BALL_OFF_Y),
-			BALL_RADIUS,
-			COLORS[id]);
+			[BALL_OFF_X + index * (BALL_RADIUS * 2 + BALL_MARGIN), BALL_OFF_Y],
+			BALL_RADIUS);
 		return {
 			id: id,
 			body: body
@@ -39,8 +39,7 @@ var CM = (function(exports) {
 
 		var body = CM.BlockBody.construct(
 			[FREE_BLOCK_OFF_X, FREE_BLOCK_OFF_Y - index * (BLOCK_SY + BLOCK_MARGIN)],
-			[BLOCK_SX, BLOCK_SY],
-			COLORS[id]);
+			[BLOCK_SX, BLOCK_SY]);
 		return {
 			state: state,
 			body: body
@@ -229,9 +228,9 @@ var CM = (function(exports) {
 				var newId = blocks[0].state.id;
 
 				currentTime += 500;
-				var colorBehavior = CM.Behaviors.merge(
-					CM.Behaviors.static(CM.Color.construct(COLORS[ball.id]), 0, currentTime),
-					CM.Behaviors.static(CM.Color.construct(COLORS[newId]), currentTime)
+				var idBehavior = CM.Behaviors.merge(
+					CM.Behaviors.static(ball.id, 0, currentTime),
+					CM.Behaviors.static(newId, currentTime)
 				);
 
 				currentTime += 500;
@@ -245,9 +244,9 @@ var CM = (function(exports) {
 					get: posBehavior
 				});
 
-				Object.defineProperty(body, 'color', {
+				Object.defineProperty(ball, 'id', {
 					configurable: true,
-					get: colorBehavior
+					get: idBehavior
 				});	
 			}
 

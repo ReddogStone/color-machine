@@ -24,6 +24,9 @@ var CM = (function(exports) {
 		scale: function(factor) {
 			return CM.Color.construct(this.r * factor, this.g * factor, this.b * factor, this.a);
 		},
+		invert: function() {
+			return CM.Color.construct(1.0 - this.r, 1.0 - this.g, 1.0 - this.b, this.a);
+		},
 		toCSS: function() {
 			var r = Math.floor(saturate(this.r) * 255);
 			var g = Math.floor(saturate(this.g) * 255);

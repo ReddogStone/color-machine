@@ -88,40 +88,79 @@
 		context.fillText(text, pos.x, pos.y);
 	}
 
+	var TRANS_PERCENTAGE = 0.2;
+	var TRANS_MARGIN = 10;
+
+	function drawTransition(context, id, shift, pos, size) {
+		var color = CM.Color.construct(CM.COLORS[id]);
+		drawBlock(context, pos, size, color.toCSS(), color.scale(0.2).toCSS(), 3);
+		drawText(context, pos, shift, 'white');
+	}
+
+	function drawTransitions(context, block) {
+		var body = block.body;
+		var sx = body.size.x;
+		var transitions = block.state.transitions;
+		var ids = Object.keys(transitions);
+		var transCount = ids.length;
+		for (var i = 0; i < ids.length; i++) {
+			var id = ids[i];
+			var shift = transitions[id];
+			drawTransition(context, id, shift,
+				CM.V2.construct(
+					body.pos.x + ((i + 0.5) * TRANS_PERCENTAGE - 0.5) * sx, 
+					body.pos.y),
+				CM.V2.construct(sx * TRANS_PERCENTAGE, body.size.y));
+		}
+	}
+	function drawBlockBody(context, block) {
+		var body = block.body;
+		var transitionCount = Object.keys(block.state.transitions).length;
+		var color = CM.Color.construct(CM.COLORS[block.state.id]);
+		var sx = body.size.x;
+		var transSize = sx * transitionCount * TRANS_PERCENTAGE + TRANS_MARGIN;
+		var newSize = sx - transSize - TRANS_MARGIN;
+		drawBlock(context,
+			CM.V2.construct(body.pos.x + 0.5 * transSize, body.pos.y),
+			CM.V2.construct(newSize, body.size.y),
+			color.toCSS(),
+			color.scale(0.2).toCSS(),
+			3);
+	}
+
 	function frame(context) {
 		var t = performance.now();
 
 		clear(context);
 		var balls = g_stateMachine.balls;
 		for (var i = 0; i < balls.length; i++) {
-			var ball = balls[i].body;
+			var ball = balls[i];
+			var body = ball.body;
+			var color = CM.Color.construct(CM.COLORS[ball.id]);
 			drawBall(context, 
-				ball.pos, 
-				ball.radius, 
-				ball.color.toCSS(),
-				ball.color.scale(0.2).toCSS(),
+				body.pos, 
+				body.radius, 
+				color.toCSS(),
+				color.scale(0.2).toCSS(),
 				3);
 		}
 		var freeBlocks = g_stateMachine.freeBlocks;
 		for (var i = 0; i < freeBlocks.length; i++) {
-			var block = freeBlocks[i].body;
+			var block = freeBlocks[i];
+			var body = block.body;
+			var color = CM.Color.construct(CM.COLORS[block.state.id]);
 			drawBlock(context, 
-				block.pos,
-				block.size, 
-				block.color.toCSS(),
-				block.color.scale(0.2).toCSS(),
+				body.pos,
+				body.size, 
+				color.toCSS(),
+				color.scale(0.2).toCSS(),
 				3);
 		}
 		var boundBlocks = g_stateMachine.boundBlocks;
 		for (var i = 0; i < boundBlocks.length; i++) {
 			var block = boundBlocks[i];
-			var body = block.body;
-			drawBlock(context,
-				body.pos,
-				body.size,
-				body.color.toCSS(),
-				body.color.scale(0.2).toCSS(),
-				3);
+			drawBlockBody(context, block);
+			drawTransitions(context, block);
 		}
 	}
 
@@ -182,9 +221,9 @@
 
 		g_stateMachine.setBalls([0, 1, 2, 1, 0, 1, 2, 0]);
 		g_stateMachine.setFreeBlocks([
-			CM.State.construct(0, {'0': -2}),
-			CM.State.construct(1, {'1': 1}),
-			CM.State.construct(2, {'2': 2}),
+			CM.State.construct(0, {'1': -1, '2': 1}),
+			CM.State.construct(1, {'2': 1}),
+			CM.State.construct(2, {'0': 2}),
 		]);
 		g_stateMachine.bindBlock(g_stateMachine.freeBlocks[0]);
 		g_stateMachine.bindBlock(g_stateMachine.freeBlocks[0]);
