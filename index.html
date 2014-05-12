@@ -216,7 +216,9 @@
 				}
 			}
 
-			result.set();
+			if (result.get()) {
+				result.set();
+			}
 		});
 		return result;
 	}
@@ -247,7 +249,7 @@
 	function makeDrag(ball, mousePosSignal, mouseStateSignal) {
 		var object = ball.body;
 		var target = null;
-		var halfTime = 0.01;
+		var halfTime = 0.1;
 		var currentIndex = g_currentBalls.indexOf(ball);
 		Object.defineProperty(object, 'pos', {
 			configurable: true,
@@ -263,7 +265,7 @@
 				var index = g_currentBalls.indexOf(ball);
 				if (index == -1) {
 					g_currentBalls.splice(currentIndex, 0, ball);
-				} else {
+				} else if (currentIndex !== index) {
 					g_stateMachine.reorderBalls(g_currentBalls);
 					currentIndex = index;
 				}
@@ -318,6 +320,11 @@
 					g_startButton.text = 'Reset';
 				} else {
 					g_stateMachine.reset();
+
+					for (var i = 0; i < g_stateMachine.balls.length; i++) {
+						makeDrag(g_stateMachine.balls[i], mousePos, buttonState);
+					}
+
 					g_startButton.text = 'Start';
 				}
 			}
