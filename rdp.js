@@ -12,9 +12,11 @@ var RDP = (function() {
 				callbacks.push(callback);
 			},
 			set: function(value) {
-				current = value;
-				for (var i = 0; i < callbacks.length; i++) {
-					callbacks[i](current);
+				if (current !== value) {
+					current = value;
+					for (var i = 0; i < callbacks.length; i++) {
+						callbacks[i](current);
+					}
 				}
 			},
 			get: function() {

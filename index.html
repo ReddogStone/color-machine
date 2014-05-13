@@ -216,9 +216,7 @@
 				}
 			}
 
-			if (result.get()) {
-				result.set();
-			}
+			result.set();
 		});
 		return result;
 	}
@@ -232,6 +230,11 @@
 					x: value.x + offset.x,
 					y: value.y + offset.y
 				});
+			}
+		});
+		offsetSignal.onValue(function(value) {
+			if (!value) {
+				result.set();
 			}
 		});
 		return result;
@@ -294,6 +297,53 @@
 		});
 	}
 
+	function prioritize(first, second) {
+		function handleValue() {
+			res.set(first.get() || second.get());
+		};
+
+		var res = RDP.signal(first.get() || second.get());
+		first.onValue(handleValue);
+		second.onValue(handleValue);
+		return res;
+	}
+
+	function buffer(init, signal) {
+		var res = RDP.signal(init);
+		signal.onValue(function(value) {
+			if (value !== undefined) {
+				res.set(value);
+			}
+		});
+		return res;
+	}
+
+	function follow(init, dragSignal, targetSignal) {
+		return CM.Behaviors.followTargetV2(init,
+			function() { return targetSignal.get(); },
+			function() { return dragSignal.get() ? 0.01 : 0.1; });
+	}
+
+	function bindBallPositions(balls, mousePosSignal, mouseStateSignal) {
+		var dragSignals = balls.map(function(ball) {
+			var offsetSignal = offset(mouseStateSignal, mousePosSignal, ball.body);
+			return drag(mousePosSignal, offsetSignal);
+		});
+
+		for (var i = 0; i < dragSignals.length; i++) {
+			var ball = balls[i];
+			var body = ball.body;
+			var dragSignal = dragSignals[i];
+			var initPosSignal = RDP.signal(body.pos);
+			var currentPosSignal = buffer(body.pos, dragSignal);
+			var targetSignal = prioritize(dragSignal, initPosSignal);
+			Object.defineProperty(ball.body, 'pos', {
+				configurable: true,
+				get: follow(body.pos, dragSignal, targetSignal)
+			});
+		}
+	}
+
 	window.onload = function() {
 		var canvas = document.getElementById("myCanvas");
 		var context = canvas.getContext('2d');
@@ -349,13 +399,15 @@
 		var mousePos = RDP.signal({x: 0, y: 0});
 		var buttonState = RDP.signal('up');
 
-		for (var i = 0; i < g_stateMachine.balls.length; i++) {
+/*		for (var i = 0; i < g_stateMachine.balls.length; i++) {
 			g_currentBalls.push(g_stateMachine.balls[i]);
 			g_ballTargets.push(g_stateMachine.ballPosition(i));
 		}
 		for (var i = 0; i < g_stateMachine.balls.length; i++) {
 			makeDrag(g_stateMachine.balls[i], mousePos, buttonState);
-		}
+		} */
+
+		bindBallPositions(g_stateMachine.balls, mousePos, buttonState);
 
 		registerMouseEvent(canvas, 'mousedown', function(e) {
 			buttonState.set('down');
