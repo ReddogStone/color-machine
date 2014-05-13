@@ -390,7 +390,7 @@
 		var canvas = document.getElementById("myCanvas");
 		var context = canvas.getContext('2d');
 
-		g_stateMachine.setBalls([0, 1, 2, 1, 0, 1, 2, 0]);
+		g_stateMachine.setBalls([0, 0, 0, 1, 1, 1, 2, 2]);
 		g_stateMachine.setFreeBlocks([
 			CM.State.construct(0, {'0': 0, '1': 1, '2': -1}),
 			CM.State.construct(1, {'0': 0, '1': 0, '2': 1}),
