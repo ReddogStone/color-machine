@@ -100,7 +100,7 @@
 	}
 
 	function drawText(context, pos, text, color) {
-		context.font = "bold 1em sans-serif";
+		context.font = "bold 1.2em sans-serif";
 		context.fillStyle = color;
 		context.textAlign = 'center';
 		context.textBaseline = 'middle';
@@ -192,6 +192,19 @@
 			drawBlockBody(context, block);
 			drawTransitions(context, block);
 		}
+
+		drawText(context, CM.V2.construct(252, 52), 
+			'Place the balls such, that after running', 'lightgray');
+		drawText(context, CM.V2.construct(250, 50), 
+			'Place the balls such, that after running', 'blue');
+		drawText(context, CM.V2.construct(252, 77), 
+			'through the machine no two neighboring balls', 'lightgray');
+		drawText(context, CM.V2.construct(250, 75), 
+			'through the machine no two neighboring balls', 'blue');
+		drawText(context, CM.V2.construct(252, 102), 
+			'are of the same color', 'lightgray');
+		drawText(context, CM.V2.construct(250, 100), 
+			'are of the same color', 'blue');
 
 		drawButton(context, g_startButton);
 	}
@@ -379,7 +392,7 @@
 
 		g_stateMachine.setBalls([0, 1, 2, 1, 0, 1, 2, 0]);
 		g_stateMachine.setFreeBlocks([
-			CM.State.construct(0, {'0': 0, '1': -1, '2': 1}),
+			CM.State.construct(0, {'0': 0, '1': 1, '2': -1}),
 			CM.State.construct(1, {'0': 0, '1': 0, '2': 1}),
 			CM.State.construct(2, {'0': 1, '1': 0, '2': 0}),
 		]);
@@ -409,28 +422,8 @@
 			g_startButton.hovered = g_startButton.pointInside(e);
 		});
 
-/*		var dragAll = broadcast([g_button, g_strangeBlock].map(drag));
-
-		registerMouseEvent(canvas, 'mousedown', function(e) {
-			dragAll({type: 'start', value: e});
-		});
-		registerMouseEvent(canvas, 'mousemove', function(e) {
-			dragAll({type: 'progress', value: e});
-		});
-		registerMouseEvent(canvas, 'mouseup', function(e) {
-			dragAll({type: 'stop', value: e});
-		}); */
-
 		var mousePos = RDP.signal({x: 0, y: 0});
 		var buttonState = RDP.signal('up');
-
-/*		for (var i = 0; i < g_stateMachine.balls.length; i++) {
-			g_currentBalls.push(g_stateMachine.balls[i]);
-			g_ballTargets.push(g_stateMachine.ballPosition(i));
-		}
-		for (var i = 0; i < g_stateMachine.balls.length; i++) {
-			makeDrag(g_stateMachine.balls[i], mousePos, buttonState);
-		} */
 
 		bindBallPositions(g_stateMachine.balls, mousePos, buttonState);
 
