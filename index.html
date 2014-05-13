@@ -249,54 +249,6 @@
 		return dx * dx + dy * dy;
 	}
 
-	function makeDrag(ball, mousePosSignal, mouseStateSignal) {
-		var object = ball.body;
-		var target = null;
-		var halfTime = 0.1;
-		var currentIndex = g_currentBalls.indexOf(ball);
-		Object.defineProperty(object, 'pos', {
-			configurable: true,
-			get: CM.Behaviors.followTargetV2(object.pos, 
-				function() { return target || g_ballTargets[g_currentBalls.indexOf(ball)]; }, 
-				function() { return halfTime; })
-		});
-		var offsetSignal = offset(mouseStateSignal, mousePosSignal, object);
-		offsetSignal.onValue(function(offsetValue) {
-			if (offsetValue) {
-				halfTime = 0.01;
-			} else {
-				var index = g_currentBalls.indexOf(ball);
-				if (index == -1) {
-					g_currentBalls.splice(currentIndex, 0, ball);
-				} else if (currentIndex !== index) {
-					g_stateMachine.reorderBalls(g_currentBalls);
-					currentIndex = index;
-				}
-				target = null;
-				halfTime = 0.1;
-			}
-		});
-
-		drag(mousePosSignal, offsetSignal).onValue(function(value) {
-			target = value;
-			var myIndex = g_currentBalls.indexOf(ball);
-			if (myIndex >= 0) {
-				var bindTarget = g_ballTargets[myIndex];
-				if (squareDist(bindTarget, value) > 50 * 50) {
-					g_currentBalls.splice(myIndex, 1);
-				}
-			} else {
-				for (var i = 0; i < g_ballTargets.length; i++) {
-					var ballTarget = g_ballTargets[i];
-					if (squareDist(ballTarget, value) < 50 * 50) {
-						g_currentBalls.splice(i, 0, ball);
-						break;
-					}
-				}
-			}
-		});
-	}
-
 	function prioritize(first, second) {
 		function handleValue() {
 			res.set(first.get() || second.get());
@@ -324,19 +276,96 @@
 			function() { return dragSignal.get() ? 0.01 : 0.1; });
 	}
 
+	function createDragHandler(index, signal) {
+		return function(value) {
+			if (value !== undefined) {
+				var current = signal.get().slice();
+				for (var i = 0; i < current.length; i++) {
+					var targetPos = g_stateMachine.ballPosition(i);
+					if (squareDist(value, targetPos) < 25 * 25) {
+						var currentIndex = current.indexOf(index);
+						if (i !== currentIndex) {
+							current.splice(currentIndex, 1);
+							current.splice(i, 0, index);
+						}
+						signal.set(current);
+						break;
+					}
+				}
+			}
+		};
+	}
+
+	function ballIndexes(dragSignals, initial) {
+		var res = RDP.signal(initial);
+		for (var i = 0; i < dragSignals.length; i++) {
+			dragSignals[i].onValue(createDragHandler(i, res));
+		}
+		return res;
+	}
+
+	function returnPos(indexesSignal, myIndex) {
+		var res = RDP.signal(g_stateMachine.ballPosition(myIndex));
+		indexesSignal.onValue(function(value) {
+			var myPosIndex = value.indexOf(myIndex);
+			if (myPosIndex >= 0) {
+				res.set(g_stateMachine.ballPosition(myPosIndex));
+			} else {
+				res.set();
+			}
+		});
+		return res;
+	}
+
+	function createRemoveIndex(myIndex, indexesSignal, signal) {
+		return function(value) {
+			var indexes = indexesSignal.get().slice();
+			if (value !== undefined) {
+				var myPosIndex = indexes.indexOf(myIndex);
+				var returnPos = g_stateMachine.ballPosition(myPosIndex);
+				if (squareDist(returnPos, value) >= 25 * 25) {
+					indexes.splice(myPosIndex, 1);
+				}
+			}
+			signal.set(indexes);
+		};
+	}
+
+	function shownIndexes(indexesSignal, dragSignals) {
+		var res = RDP.signal(indexesSignal);
+		for (var i = 0; i < dragSignals.length; i++) {
+			dragSignals[i].onValue(createRemoveIndex(i, indexesSignal, res));
+		}
+		return res;
+	}
+
 	function bindBallPositions(balls, mousePosSignal, mouseStateSignal) {
+		var originalBalls = balls.slice();
 		var dragSignals = balls.map(function(ball) {
 			var offsetSignal = offset(mouseStateSignal, mousePosSignal, ball.body);
 			return drag(mousePosSignal, offsetSignal);
 		});
 
+		var indexes = balls.map(function(ball, index) { return index; });
+		var indexesSignal = ballIndexes(dragSignals, indexes);
+		var shownIndexesSignal = shownIndexes(indexesSignal, dragSignals);
+
+		var reorder = function(value) {
+			if (value === undefined) {
+				var indexes = indexesSignal.get();
+				var newBalls = indexes.map(function(index) { return originalBalls[index]; });
+				g_stateMachine.reorderBalls(newBalls);
+			}
+		};
+
 		for (var i = 0; i < dragSignals.length; i++) {
 			var ball = balls[i];
 			var body = ball.body;
 			var dragSignal = dragSignals[i];
-			var initPosSignal = RDP.signal(body.pos);
-			var currentPosSignal = buffer(body.pos, dragSignal);
-			var targetSignal = prioritize(dragSignal, initPosSignal);
+			dragSignal.onValue(reorder);
+			var currentPosSignal = returnPos(shownIndexesSignal, i);
+			var returnPosSignal = returnPos(indexesSignal, i);
+			var targetSignal = prioritize(prioritize(dragSignal, currentPosSignal), returnPosSignal);
 			Object.defineProperty(ball.body, 'pos', {
 				configurable: true,
 				get: follow(body.pos, dragSignal, targetSignal)
@@ -370,11 +399,7 @@
 					g_startButton.text = 'Reset';
 				} else {
 					g_stateMachine.reset();
-
-					for (var i = 0; i < g_stateMachine.balls.length; i++) {
-						makeDrag(g_stateMachine.balls[i], mousePos, buttonState);
-					}
-
+					bindBallPositions(g_stateMachine.balls, mousePos, buttonState);
 					g_startButton.text = 'Start';
 				}
 			}
