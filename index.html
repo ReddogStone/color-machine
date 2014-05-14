@@ -209,12 +209,6 @@
 		drawButton(context, g_startButton);
 	}
 
-	function buttonState(target) {
-		return function(value) {
-			target(value);
-		};
-	}
-
 	function offset(stateSignal, mousePosSignal, object) {
 		var result = RDP.signal();
 		stateSignal.onValue(function(value) {
@@ -262,94 +256,100 @@
 		return dx * dx + dy * dy;
 	}
 
-	function prioritize(first, second) {
-		function handleValue() {
-			res.set(first.get() || second.get());
-		};
-
-		var res = RDP.signal(first.get() || second.get());
-		first.onValue(handleValue);
-		second.onValue(handleValue);
-		return res;
+	function offset(stateSignal, mousePosSignal, object) {
+		return stateSignal.buffer(2).map(function(buffer) {
+			var previous = buffer[0];
+			var current = buffer[1];
+			if ((previous == 'up') && (current == 'down')) {
+				var mousePos = mousePosSignal();
+				if (object.pointInside(mousePos)) {
+					var objPos = object.pos;
+					return {
+						x: objPos.x - mousePos.x,
+						y: objPos.y - mousePos.y
+					};
+				}
+			}
+			return undefined;
+		});
 	}
 
-	function buffer(init, signal) {
-		var res = RDP.signal(init);
-		signal.onValue(function(value) {
-			if (value !== undefined) {
-				res.set(value);
+	function drag(mousePosSignal, offsetSignal) {
+		return mousePosSignal.merge(offsetSignal).map(function(value) {
+			var mousePos = value[0];
+			var offset = value[1];
+			if (offset) {
+				return {
+					x: mousePos.x + offset.x,
+					y: mousePos.y + offset.y
+				};
 			}
 		});
-		return res;
 	}
 
-	function follow(init, dragSignal, targetSignal) {
-		return CM.Behaviors.followTargetV2(init,
-			function() { return targetSignal.get(); },
-			function() { return dragSignal.get() ? 0.01 : 0.1; });
+	function flatDrag(dragSignals) {
+		return RDP.flatten(dragSignals.map(function(dragSignal, index) {
+			return dragSignal.map(function(value) {
+				return [index, value];
+			});
+		}));
 	}
 
-	function createDragHandler(index, signal) {
-		return function(value) {
-			if (value !== undefined) {
-				var current = signal.get().slice();
+	function ballIndexes(dragSignals, initial) {
+		var res = RDP.discrete(initial, function(setValue) {
+			flatDrag(dragSignals).map(function(value) {
+				if (value === undefined) { return; }
+				var index = value[0];
+				var dragValue = value[1];
+				if (dragValue === undefined) { return; }
+
+				var current = res().slice();
+				var currentIndex = current.indexOf(index);
 				for (var i = 0; i < current.length; i++) {
 					var targetPos = g_stateMachine.ballPosition(i);
-					if (squareDist(value, targetPos) < 25 * 25) {
-						var currentIndex = current.indexOf(index);
+					if (squareDist(dragValue, targetPos) < 25 * 25) {
 						if (i !== currentIndex) {
 							current.splice(currentIndex, 1);
 							current.splice(i, 0, index);
 						}
-						signal.set(current);
+						setValue(current);
 						break;
 					}
 				}
-			}
-		};
-	}
-
-	function ballIndexes(dragSignals, initial) {
-		var res = RDP.signal(initial);
-		for (var i = 0; i < dragSignals.length; i++) {
-			dragSignals[i].onValue(createDragHandler(i, res));
-		}
-		return res;
-	}
-
-	function returnPos(indexesSignal, myIndex) {
-		var res = RDP.signal(g_stateMachine.ballPosition(myIndex));
-		indexesSignal.onValue(function(value) {
-			var myPosIndex = value.indexOf(myIndex);
-			if (myPosIndex >= 0) {
-				res.set(g_stateMachine.ballPosition(myPosIndex));
-			} else {
-				res.set();
-			}
+			});
 		});
 		return res;
 	}
 
-	function createRemoveIndex(myIndex, indexesSignal, signal) {
-		return function(value) {
-			var indexes = indexesSignal.get().slice();
-			if (value !== undefined) {
-				var myPosIndex = indexes.indexOf(myIndex);
-				var returnPos = g_stateMachine.ballPosition(myPosIndex);
-				if (squareDist(returnPos, value) >= 25 * 25) {
-					indexes.splice(myPosIndex, 1);
-				}
-			}
-			signal.set(indexes);
-		};
+	function returnPos(indexesSignal, myIndex) {
+		return indexesSignal.map(function(value) {
+			var myPosIndex = value.indexOf(myIndex);
+			if (myPosIndex >= 0) {
+				return g_stateMachine.ballPosition(myPosIndex);
+			}			
+		});
 	}
 
 	function shownIndexes(indexesSignal, dragSignals) {
-		var res = RDP.signal(indexesSignal);
-		for (var i = 0; i < dragSignals.length; i++) {
-			dragSignals[i].onValue(createRemoveIndex(i, indexesSignal, res));
-		}
-		return res;
+		return RDP.merge(dragSignals).map(function(dragValues) {
+			var res = [];
+			var indexes = indexesSignal();
+			for (var i = 0; i < indexes.length; i++) {
+				var dragIndex = indexes[i];
+				var dragValue = dragValues[dragIndex];
+				var returnPos = g_stateMachine.ballPosition(i);
+				if (!dragValue || (squareDist(returnPos, dragValue) < 25 * 25)) {
+					res.push(indexes[i]);
+				}
+			}
+			return res;
+		});
+	}
+
+	function follow(init, dragSignal, targetSignal) {
+		return CM.Behaviors.followTargetV2(init,
+			function() { return targetSignal(); },
+			function() { return dragSignal() ? 0.001 : 0.1; });
 	}
 
 	function bindBallPositions(balls, mousePosSignal, mouseStateSignal) {
@@ -365,7 +365,7 @@
 
 		var reorder = function(value) {
 			if (value === undefined) {
-				var indexes = indexesSignal.get();
+				var indexes = indexesSignal();
 				var newBalls = indexes.map(function(index) { return originalBalls[index]; });
 				g_stateMachine.reorderBalls(newBalls);
 			}
@@ -378,13 +378,13 @@
 			dragSignal.onValue(reorder);
 			var currentPosSignal = returnPos(shownIndexesSignal, i);
 			var returnPosSignal = returnPos(indexesSignal, i);
-			var targetSignal = prioritize(prioritize(dragSignal, currentPosSignal), returnPosSignal);
+			var targetSignal = dragSignal.or(currentPosSignal).or(returnPosSignal);
 			Object.defineProperty(ball.body, 'pos', {
 				configurable: true,
 				get: follow(body.pos, dragSignal, targetSignal)
 			});
 		}
-	}
+	}	
 
 	window.onload = function() {
 		var canvas = document.getElementById("myCanvas");
@@ -412,7 +412,7 @@
 					g_startButton.text = 'Reset';
 				} else {
 					g_stateMachine.reset();
-					bindBallPositions(g_stateMachine.balls, mousePos, buttonState);
+					bindBallPositions(g_stateMachine.balls, mousePosSignal, buttonStateSignal);
 					g_startButton.text = 'Start';
 				}
 			}
@@ -422,18 +422,15 @@
 			g_startButton.hovered = g_startButton.pointInside(e);
 		});
 
-		var mousePos = RDP.signal({x: 0, y: 0});
-		var buttonState = RDP.signal('up');
-
-		bindBallPositions(g_stateMachine.balls, mousePos, buttonState);
-
-		registerMouseEvent(canvas, 'mousedown', function(e) {
-			buttonState.set('down');
+		var mousePosSignal = RDP.discrete({x: 0, y: 0}, function(setValue) {
+			registerMouseEvent(canvas, 'mousemove', setValue);
 		});
-		registerMouseEvent(canvas, 'mouseup', function(e) {
-			buttonState.set('up');
+		var buttonStateSignal = RDP.discrete('up', function(setValue) {
+			registerMouseEvent(canvas, 'mousedown', function() { setValue('down'); });
+			registerMouseEvent(canvas, 'mouseup', function() { setValue('up'); });
 		});
-		registerMouseEvent(canvas, 'mousemove', mousePos.set);
+
+		bindBallPositions(g_stateMachine.balls, mousePosSignal, buttonStateSignal);
 
 		(function animate() {
 			frame(context);
