@@ -443,8 +443,24 @@
 		bindPositions(g_stateMachine.boundBlocks,
 			mousePosSignal, buttonStateSignal, reorderBlocks, getBlockPosition, 50);
 
+		var fps = 0;
+		var frames = 0;
+		var time = 0;
+		var lastTime = performance.now();
 		(function animate() {
 			frame(context);
+
+			frames++;
+			var currentTime = performance.now();
+			time += currentTime - lastTime;
+			lastTime = currentTime;
+			if (time > 1000) {
+				fps = frames;
+				time -= 1000;
+				frames = 0;
+			}
+			drawText(context, {x: 950, y: 30}, 'FPS: ' + fps, 'black');
+
 			requestAnimationFrame(animate);
 		})();
 	};
