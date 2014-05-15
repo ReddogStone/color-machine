@@ -297,23 +297,21 @@
 
 	function ballIndexes(dragSignals, initial) {
 		var res = RDP.discrete(initial, function(setValue) {
-			flatDrag(dragSignals).map(function(value) {
-				if (value === undefined) { return; }
-				var index = value[0];
-				var dragValue = value[1];
-				if (dragValue === undefined) { return; }
-
-				var current = res().slice();
-				var currentIndex = current.indexOf(index);
-				for (var i = 0; i < current.length; i++) {
-					var targetPos = g_stateMachine.ballPosition(i);
-					if (squareDist(dragValue, targetPos) < 25 * 25) {
-						if (i !== currentIndex) {
-							current.splice(currentIndex, 1);
-							current.splice(i, 0, index);
+			RDP.merge(dragSignals).onValue(function(dragValues) {
+				var indexes = res().slice();
+				for (var i = 0; i < indexes.length; i++) {
+					var dragIndex = indexes[i];
+					var dragValue = dragValues[dragIndex];
+					if (dragValue) {
+						for (var j = 0; j < indexes.length; j++) {
+							var targetPos = g_stateMachine.ballPosition(j);
+							if ((j !== i) && (squareDist(dragValue, targetPos) < 25 * 25)) {
+								indexes.splice(i, 1);
+								indexes.splice(j, 0, dragIndex);
+								setValue(indexes);
+								return;
+							}
 						}
-						setValue(current);
-						break;
 					}
 				}
 			});
