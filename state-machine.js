@@ -296,6 +296,12 @@ var CM = (function(exports) {
 		reorderBalls: function(balls) {
 			this.balls = balls.slice();
 			this._initialBallIds = this.balls.map(function(ball) { return ball.id; });
+		},
+		blockPosition: function(index) {
+			return blockPosition(index);
+		},
+		reorderBlocks: function(blocks) {
+			this.boundBlocks = blocks.slice();
 		}
 	};
 
