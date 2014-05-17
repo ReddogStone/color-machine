@@ -3,6 +3,38 @@ var RDP = (function() {
 
 	var exports = {};
 
+	function makeMap(callbacks, initValue) {
+		return function(func) {
+			return discreteObserver(func(initValue), function(setValue) {
+				callbacks.push(function(value) {
+					setValue(func(value));
+				});
+			});
+		};
+	}
+
+	function makeBuffer(callbacks, initValue) {
+		return function(size) {
+			var buffer = new Array(size);
+			buffer[size - 1] = initValue;
+			return discreteObserver(buffer, function(setValue) {
+				callbacks.push(function(value) {
+					var current = buffer.slice(1);
+					current.push(value);
+					setValue(current);
+				});
+			});
+		};
+	}
+
+	function makeStore(callbacks, initValue) {
+		return function(explicitInit) {
+			return discrete(explicitInit || initValue, function(setValue) {
+				callbacks.push(setValue);
+			});
+		};
+	}
+
 	function discreteObserver(init, setter) {
 		var callbacks = [];
 		if (setter) {
@@ -15,34 +47,17 @@ var RDP = (function() {
 		}
 
 		return {
-			map: function(func) {
-				return discreteObserver(func(init), function(setValue) {
-					callbacks.push(function(value) {
-						setValue(func(value));
-					});
-				});
-			},
-			buffer: function(size) {
-				var buffer = new Array(size);
-				buffer[size - 1] = init;
-				return discreteObserver(buffer, function(setValue) {
-					callbacks.push(function(value) {
-						var current = buffer.slice(1);
-						current.push(value);
-						setValue(current);
-					});
-				});
-			},
+			map: makeMap(callbacks, init),
+			buffer: makeBuffer(callbacks, init),
 			merge: function(other) {
 				return exports.merge(this, other);
 			},
 			or: function(other) {
 				return exports.prioritize(this, other);
 			},
-			store: function(initValue) {
-				return discrete(initValue || init, function(setValue) {
-					callbacks.push(setValue);
-				});
+			store: makeStore(callbacks, init),
+			disconnect: function() {
+				callbacks.length = 0;
 			}
 		};
 	}
@@ -68,35 +83,18 @@ var RDP = (function() {
 			return current;
 		};
 
-		res.map = function(func) {
-			return discreteObserver(func(current), function(setValue) {
-				callbacks.push(function(value) {
-					setValue(func(value));
-				});
-			});
-		};
-		res.buffer = function(size) {
-			var buffer = new Array(size);
-			buffer[size - 1] = current;
-			return discreteObserver(buffer, function(setValue) {
-				callbacks.push(function(value) {
-					var current = buffer.slice(1);
-					current.push(value);
-					setValue(current);
-				});
-			});
-		};
+		res.map = makeMap(callbacks, current);
+		res.buffer = makeBuffer(callbacks, current);
 		res.merge = function(other) {
 			return exports.merge(this, other);
 		};
 		res.or = function(other) {
 			return exports.prioritize(this, other);
 		};
-		res.store = function(initValue) {
-			return discrete(current || initValue, function(setValue) {
-				callbacks.push(setValue);
-			});
-		};
+		res.store = makeStore(callbacks, current);
+		res.disconnect = function() {
+			callbacks.length = 0;
+		}		
 
 		return res;
 	};

@@ -380,6 +380,9 @@
 					g_startButton.text = 'Reset';
 				} else {
 					g_stateMachine.reset();
+
+					mousePosSignal.disconnect();
+					buttonStateSignal.disconnect();
 					bindPositions(g_stateMachine.balls, 
 						mousePosSignal, buttonStateSignal, reorderBalls, getBallPosition);
 					bindPositions(g_stateMachine.boundBlocks,
