@@ -1,7 +1,8 @@
 var CM = (function(exports) {
 	exports.Time = {
+		multiplier: 1,
 		now: function() {
-			return performance.now();
+			return this.multiplier * performance.now();
 		}
 	};
 

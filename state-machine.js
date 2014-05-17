@@ -1,8 +1,8 @@
 var CM = (function(exports) {
 	var COLORS = [
-		[1.0, 0.0, 0.0, 1.0],
-		[0.0, 0.0, 1.0, 1.0],
-		[0.0, 0.5, 0.0, 1.0]
+		'#E55C00',
+		'#0D40A0',
+		'#28B000'
 	];
 	exports.COLORS = COLORS;
 
@@ -58,17 +58,25 @@ var CM = (function(exports) {
 		block.body.pos = blockPosition(index);
 	}
 
-	function nextBallBehavior(ball, beginT) {
+	function moveToRecognitionBehavior(ball, beginT) {
 		var pos = ball.pos;
-		var duration = 1000 * (BLOCK_OFF_X - pos.x) / BALL_SPEED;
-		return CM.Behaviors.linearV2(beginT, beginT + duration, pos, [BLOCK_OFF_X, BALL_OFF_Y]);
+		var toX = BLOCK_OFF_X - BLOCK_SX * 0.2;
+		var duration = 1000 * (toX - pos.x) / BALL_SPEED;
+		return CM.Behaviors.linearV2(beginT, beginT + duration, pos, [toX, BALL_OFF_Y]);
+	}
+
+	function moveToColoringBehavior(ball, beginT) {
+		var fromX = BLOCK_OFF_X - BLOCK_SX * 0.2;
+		var toX = BLOCK_OFF_X + BLOCK_SX * 0.33;
+		var duration = 1000 * (toX - fromX) / BALL_SPEED;
+		return CM.Behaviors.linearV2(beginT, beginT + duration, [fromX, BALL_OFF_Y], [toX, BALL_OFF_Y]);
 	}
 
 	function finishBallBehavior(ball, index, beginT) {
-		var finalX = BALL_FINAL_OFF_X - index * (BALL_RADIUS * 2 + BALL_MARGIN);
-		var duration = 1000 * (finalX - BLOCK_OFF_X) / BALL_SPEED;
-		return CM.Behaviors.linearV2(beginT, beginT + duration, [BLOCK_OFF_X, BALL_OFF_Y], 
-			[finalX, BALL_OFF_Y]);
+		var fromX = BLOCK_OFF_X + BLOCK_SX * 0.33;
+		var toX = BALL_FINAL_OFF_X - index * (BALL_RADIUS * 2 + BALL_MARGIN);
+		var duration = 1000 * (toX - fromX) / BALL_SPEED;
+		return CM.Behaviors.linearV2(beginT, beginT + duration, [fromX, BALL_OFF_Y], [toX, BALL_OFF_Y]);
 	}
 
 	function shift(blocks, shift) {
@@ -220,8 +228,8 @@ var CM = (function(exports) {
 			for (var i = this.balls.length - 1; i >= 0; i--) {
 				var ball = this.balls[i];
 				var body = ball.body;
-				var posBehavior = nextBallBehavior(body, currentTime);
-				currentTime = posBehavior.endT;
+				var moveToRecognition = moveToRecognitionBehavior(body, currentTime);
+				currentTime = moveToRecognition.endT + 500;
 
 				var shiftValue = step(ball.id, blocks);
 				appendBlockShiftBehaviors(blocks, shiftValue, currentTime);
@@ -234,14 +242,18 @@ var CM = (function(exports) {
 				var newId = blocks[0].state.id;
 
 				currentTime += 500;
+				var moveToColoring = moveToColoringBehavior(body, currentTime);
+
+				currentTime = moveToColoring.endT + 500;
 				var idBehavior = CM.Behaviors.merge(
 					CM.Behaviors.static(ball.id, 0, currentTime),
 					CM.Behaviors.static(newId, currentTime)
 				);
 
 				currentTime += 500;
-				posBehavior = CM.Behaviors.merge(
-					posBehavior, 
+				var posBehavior = CM.Behaviors.merge(
+					moveToRecognition,
+					moveToColoring,
 					finishBallBehavior(body, this.balls.length - i - 1, currentTime)
 				);
 
