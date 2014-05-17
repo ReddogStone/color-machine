@@ -3,42 +3,61 @@ var RDP = (function() {
 
 	var exports = {};
 
-	exports.signal = function(init) {
-		var current = init;
+	function discreteObserver(init, setter) {
 		var callbacks = [];
+		if (setter) {
+			setter(function(value) {
+				var count = callbacks.length;
+				for (var i = 0; i < count; i++) {
+					callbacks[i](value);
+				}
+			});
+		}
 
 		return {
-			onValue: function(callback) {
-				callbacks.push(callback);
+			map: function(func) {
+				return discreteObserver(func(init), function(setValue) {
+					callbacks.push(function(value) {
+						setValue(func(value));
+					});
+				});
 			},
-			set: function(value) {
-				if (current !== value) {
-					current = value;
-					for (var i = 0; i < callbacks.length; i++) {
-						callbacks[i](current);
-					}
-				}
+			buffer: function(size) {
+				var buffer = new Array(size);
+				buffer[size - 1] = init;
+				return discreteObserver(buffer, function(setValue) {
+					callbacks.push(function(value) {
+						var current = buffer.slice(1);
+						current.push(value);
+						setValue(current);
+					});
+				});
 			},
-			get: function() {
-				return current;
+			merge: function(other) {
+				return exports.merge(this, other);
+			},
+			or: function(other) {
+				return exports.prioritize(this, other);
+			},
+			store: function(initValue) {
+				return discrete(initValue || init, function(setValue) {
+					callbacks.push(setValue);
+				});
 			}
 		};
-	};
+	}
+	exports.discreteObserver = discreteObserver;
 
 	function discrete(init, setter) {
 		var current = init;
 		var callbacks = [];
 
-		function onValue(func) {
-			callbacks.push(func);
-		}
-
 		if (setter) {
 			setter(function(value) {
 				if (current !== value) {
 					current = value;
-					var callbackCount = callbacks.length;
-					for (var i = 0; i < callbackCount; i++) {
+					var count = callbacks.length;
+					for (var i = 0; i < count; i++) {
 						callbacks[i](current);
 					}
 				}
@@ -49,51 +68,33 @@ var RDP = (function() {
 			return current;
 		};
 
-		res.onValue = onValue;
-
 		res.map = function(func) {
-			return discrete(func(current), function(setValue) {
-				onValue(function(value) {
+			return discreteObserver(func(current), function(setValue) {
+				callbacks.push(function(value) {
 					setValue(func(value));
 				});
 			});
 		};
-
 		res.buffer = function(size) {
-			var init = new Array(size);
-			init[size - 1] = current;
-			var res = discrete(init, function(setValue) {
-				onValue(function(value) {
-					var curBuffer = res().slice(1);
-					curBuffer.push(value);
-					setValue(curBuffer);
+			var buffer = new Array(size);
+			buffer[size - 1] = current;
+			return discreteObserver(buffer, function(setValue) {
+				callbacks.push(function(value) {
+					var current = buffer.slice(1);
+					current.push(value);
+					setValue(current);
 				});
 			});
-			return res;
 		};
-
 		res.merge = function(other) {
-			return discrete(current || other(), function(setValue) {
-				if (other.onValue) {
-					other.onValue(function(value) {
-						setValue([current, value]);
-					});
-				}
-				onValue(function(value) {
-					setValue([value, other()]);
-				});
-			});
+			return exports.merge(this, other);
 		};
-
 		res.or = function(other) {
-			return discrete(current || other(), function(setValue) {
-				function set() {
-					setValue(current || other());
-				}
-				if (other.onValue) {
-					other.onValue(set);
-				}
-				onValue(set);
+			return exports.prioritize(this, other);
+		};
+		res.store = function(initValue) {
+			return discrete(current || initValue, function(setValue) {
+				callbacks.push(setValue);
 			});
 		};
 
@@ -101,22 +102,29 @@ var RDP = (function() {
 	};
 	exports.discrete = discrete;
 
+	function createValueSetter(values, setValue, index) {
+		return function(value) {
+			values[index] = value;
+			setValue(values);
+		};
+	}
+
 	exports.merge = function(signals) {
 		if (!Array.isArray(signals)) {
 			signals = Array.prototype.slice.call(arguments);
 		}
 
-		function getValue() {
-			return signals.map(function(signal) { return signal(); });
-		}
+		var values = signals.map(function(signal) {
+			if (typeof signal === 'function') {
+				return signal();
+			} else {
+				return signal.store()();
+			}
+		});
 
-		return discrete(getValue(), function(setValue) {
+		return discreteObserver(values, function(setValue) {
 			for (var i = 0; i < signals.length; i++) {
-				if (signals[i].onValue) {
-					signals[i].onValue(function() {
-						setValue(getValue());
-					});
-				}
+				signals[i].map(createValueSetter(values, setValue, i));
 			}
 		});
 	};
@@ -126,10 +134,18 @@ var RDP = (function() {
 			signals = Array.prototype.slice.call(arguments);
 		}
 
-		return discrete(undefined, function(setValue) {
+		return discreteObserver(undefined, function(setValue) {
 			for (var i = 0; i < signals.length; i++) {
-				if (signals[i].onValue) {
-					signals[i].onValue(setValue);
+				signals[i].map(setValue);
+			}
+		});
+	};
+
+	exports.prioritize = function() {
+		return exports.merge.apply(null, arguments).map(function(values) {
+			for (var i = 0; i < values.length; i++) {
+				if (values[i]) {
+					return values[i];
 				}
 			}
 		});

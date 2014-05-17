@@ -209,44 +209,6 @@
 		drawButton(context, g_startButton);
 	}
 
-	function offset(stateSignal, mousePosSignal, object) {
-		var result = RDP.signal();
-		stateSignal.onValue(function(value) {
-			if (value == 'down') {
-				var mousePos = mousePosSignal.get();
-				if (object.pointInside(mousePos)) {
-					var objPos = object.pos;
-					return result.set({
-						x: objPos.x - mousePos.x,
-						y: objPos.y - mousePos.y,
-					});
-				}
-			}
-
-			result.set();
-		});
-		return result;
-	}
-
-	function drag(mousePosSignal, offsetSignal) {
-		var result = RDP.signal();
-		mousePosSignal.onValue(function(value) {
-			var offset = offsetSignal.get();
-			if (offset) {
-				result.set({
-					x: value.x + offset.x,
-					y: value.y + offset.y
-				});
-			}
-		});
-		offsetSignal.onValue(function(value) {
-			if (!value) {
-				result.set();
-			}
-		});
-		return result;
-	}
-
 	var g_currentBalls = [];
 	var g_ballTargets = [];
 
@@ -257,11 +219,12 @@
 	}
 
 	function offset(stateSignal, mousePosSignal, object) {
+		var storedMousePos = mousePosSignal.store({x: 0, y: 0});
 		return stateSignal.buffer(2).map(function(buffer) {
 			var previous = buffer[0];
 			var current = buffer[1];
 			if ((previous == 'up') && (current == 'down')) {
-				var mousePos = mousePosSignal();
+				var mousePos = storedMousePos();
 				if (object.pointInside(mousePos)) {
 					var objPos = object.pos;
 					return {
@@ -288,9 +251,9 @@
 	}
 
 	function ballIndexes(dragSignals, initial, getPosition, proximity) {
+		var indexes = initial.slice();
 		var res = RDP.discrete(initial, function(setValue) {
-			RDP.merge(dragSignals).onValue(function(dragValues) {
-				var indexes = res().slice();
+			RDP.merge(dragSignals).map(function(dragValues) {
 				for (var i = 0; i < indexes.length; i++) {
 					var dragIndex = indexes[i];
 					var dragValue = dragValues[dragIndex];
@@ -300,7 +263,7 @@
 							if ((j !== i) && (squareDist(dragValue, targetPos) < proximity * proximity)) {
 								indexes.splice(i, 1);
 								indexes.splice(j, 0, dragIndex);
-								setValue(indexes);
+								setValue(indexes.slice());
 								return;
 							}
 						}
@@ -346,14 +309,14 @@
 		var originalObjects = objects.slice();
 		var dragSignals = objects.map(function(ball) {
 			var offsetSignal = offset(mouseStateSignal, mousePosSignal, ball.body);
-			return drag(mousePosSignal, offsetSignal);
+			return drag(mousePosSignal, offsetSignal).store();
 		});
 
 		var indexes = objects.map(function(ball, index) { return index; });
 		var indexesSignal = ballIndexes(dragSignals, indexes, getPosition, proximity);
 		var shownIndexesSignal = shownIndexes(indexesSignal, dragSignals, getPosition, proximity);
 
-		RDP.flatten(dragSignals).onValue(function(value) {
+		RDP.flatten(dragSignals).map(function(value) {
 			if (value === undefined) {
 				var indexes = indexesSignal();
 				var newObjects = indexes.map(function(index) { return originalObjects[index]; });
@@ -367,7 +330,7 @@
 			var dragSignal = dragSignals[i];
 			var currentPosSignal = returnPos(shownIndexesSignal, i, getPosition);
 			var returnPosSignal = returnPos(indexesSignal, i, getPosition);
-			var targetSignal = dragSignal.or(currentPosSignal).or(returnPosSignal);
+			var targetSignal = RDP.prioritize(dragSignal, currentPosSignal, returnPosSignal).store();
 			Object.defineProperty(object.body, 'pos', {
 				configurable: true,
 				get: follow(body.pos, dragSignal, targetSignal)
@@ -430,10 +393,10 @@
 			g_startButton.hovered = g_startButton.pointInside(e);
 		});
 
-		var mousePosSignal = RDP.discrete({x: 0, y: 0}, function(setValue) {
+		var mousePosSignal = RDP.discreteObserver({x: 0, y: 0}, function(setValue) {
 			registerMouseEvent(canvas, 'mousemove', setValue);
 		});
-		var buttonStateSignal = RDP.discrete('up', function(setValue) {
+		var buttonStateSignal = RDP.discreteObserver('up', function(setValue) {
 			registerMouseEvent(canvas, 'mousedown', function() { setValue('down'); });
 			registerMouseEvent(canvas, 'mouseup', function() { setValue('up'); });
 		});
