@@ -307,12 +307,12 @@
 
 	function bindPositions(objects, mousePosSignal, mouseStateSignal, onReorder, getPosition, proximity) {
 		var originalObjects = objects.slice();
-		var dragSignals = objects.map(function(ball) {
-			var offsetSignal = offset(mouseStateSignal, mousePosSignal, ball.body);
+		var dragSignals = objects.map(function(object) {
+			var offsetSignal = offset(mouseStateSignal, mousePosSignal, object.body);
 			return drag(mousePosSignal, offsetSignal).store();
 		});
 
-		var indexes = objects.map(function(ball, index) { return index; });
+		var indexes = objects.map(function(_, index) { return index; });
 		var indexesSignal = ballIndexes(dragSignals, indexes, getPosition, proximity);
 		var shownIndexesSignal = shownIndexes(indexesSignal, dragSignals, getPosition, proximity);
 
@@ -397,8 +397,10 @@
 			registerMouseEvent(canvas, 'mousemove', setValue);
 		});
 		var buttonStateSignal = RDP.discreteObserver('up', function(setValue) {
-			registerMouseEvent(canvas, 'mousedown', function() { setValue('down'); });
-			registerMouseEvent(canvas, 'mouseup', function() { setValue('up'); });
+			registerMouseEvent(canvas, 'mousedown', function() { 
+				setValue('down'); 
+			});
+			registerMouseEvent(document, 'mouseup', function() { setValue('up'); });
 		});
 
 		bindPositions(g_stateMachine.balls,
