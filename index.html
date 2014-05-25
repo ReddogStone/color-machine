@@ -70,8 +70,11 @@
 		pointInside: function(point) {
 			return pointInRect(point, this.rect());
 		}
-
 	};
+
+	var g_otherButton = Object.create(g_startButton);
+	g_otherButton.pos = CM.V2.construct(512, 500);
+	g_otherButton.text = 'Other';
 
 	function clear(context) {
 		context.fillStyle = "white";
@@ -229,10 +232,7 @@
 	}
 
 	function frame(context) {
-		var t = performance.now();
-
-		clear(context);
-		var balls = g_stateMachine.balls;
+/*		var balls = g_stateMachine.balls;
 		for (var i = 0; i < balls.length; i++) {
 			var ball = balls[i];
 			var body = ball.body;
@@ -275,9 +275,164 @@
 		drawText(context, CM.V2.construct(252, 102), 
 			'are of the same color', 'lightgray');
 		drawText(context, CM.V2.construct(250, 100), 
-			'are of the same color', 'blue');
+			'are of the same color', 'blue'); */
 
 		drawButton(context, g_startButton);
+		drawButton(context, g_otherButton);
+	}
+
+	function buffer(size, target) {
+		var values = new Array(size);
+		return function(value) {
+			values.shift();
+			values.push(value);
+			target(values.slice());
+		};
+	}
+	function merge(count, target) {
+		function createHandler(index) {
+			return function(value) {
+				values[index] = value;
+				target(values.slice());
+			};
+		}
+
+		var values = new Array(count);
+		var res = new Array(count);
+		for (var i = 0; i < count; i++) {
+			res[i] = createHandler(i);
+		};
+		return res;
+	}
+
+	function transpose(tuples) {
+		if ((tuples.length == 0) || (!Array.isArray(tuples[0]))) {
+			return tuples;
+		}
+
+		var tupleCount = tuples.length;
+		var tupleSize = tuples[0].length;
+		var res = new Array(tupleSize);
+		for (var i = 0; i < tupleSize; i++) {
+			res[i] = new Array(tupleCount);
+		}
+		for (var i = 0; i < tupleCount; i++) {
+			for (var j = 0; j < tupleSize; j++) {
+				res[j][i] = tuples[i][j];
+			}
+		}
+		return res;
+	}
+	function broadcast(targets) {
+		if (arguments.length > 1) {
+			targets = Array.prototype.slice.call(arguments);
+		}
+		return transpose(targets).map(function(targetSet) {
+			return function(value) {
+				for (var i = 0; i < targetSet.length; i++) {
+					targetSet[i](value);
+				};
+			};
+		});
+	}
+
+	var keep = {};
+	function feed(sources, targets) {
+		if (!Array.isArray(sources)) {
+			return sources(targets);
+		} else {
+			return sources.map(function(source, index) {
+				if (source !== keep) {
+					return source(targets[index]);
+				} else {
+					return targets[index];
+				}
+			});
+		}
+	}
+
+	function waterfall(elements) {
+		if (arguments.length > 1) {
+			elements = Array.prototype.slice.call(arguments);
+		}
+
+		if (elements.length == 0) {
+			return function() {};
+		}
+		var res = elements[elements.length - 1];
+		for (var i = elements.length - 2; i >= 0; i--) {
+			res = feed(elements[i], res);
+		}
+		return res;
+	}
+
+	function signal() {
+		var current;
+		var res = function() {
+			return current;
+		};
+		res.feeder = function(target) {
+			return function(value) {
+				current = value;
+				target(value);
+			};
+		};
+		return res;
+	};
+
+	function offset(mousePosSignal, object) {
+		return function(target) {
+			return buffer(2, function(values) {
+				var previous = values[0];
+				var current = values[1];
+				if ((previous == 'up') && (current == 'down')) {
+					var mousePos = mousePosSignal();
+					if (object.pointInside(mousePos)) {
+						var objPos = object.pos;
+						return target({
+							x: objPos.x - mousePos.x,
+							y: objPos.y - mousePos.y
+						});
+					}
+				}
+				target(null);
+			});
+		};
+	}
+
+	function drag() {
+		return function(target) {
+			return merge(2, function(values) {
+				var mousePos = values[0];
+				if (!mousePos) {
+					debugger;
+				}
+				var offset = values[1];
+				if (offset) {
+					return target({
+						x: mousePos.x + offset.x,
+						y: mousePos.y + offset.y
+					});
+				}
+			});
+		};
+	}
+	function dragObject(mousePosSignal, object) {
+		return function(target) {
+			return waterfall([keep, offset(mousePosSignal, object)], drag(), target);
+		};
+	}
+	function dragObjects(objects) {
+		var mousePosSignal = signal();
+
+		return feed(
+			[mousePosSignal.feeder, keep],
+			broadcast(objects.map(function(object) {
+				return feed(dragObject(mousePosSignal, object), function(value) {
+					object.pos = value;
+				});
+			}))
+		);
 	}
 
 	window.onload = function() {
@@ -294,7 +449,24 @@
 		g_stateMachine.bindBlock(g_stateMachine.freeBlocks[0]);
 		g_stateMachine.bindBlock(g_stateMachine.freeBlocks[0]);
 
-		registerMouseEvent(canvas, 'mousedown', function(e) {
+		var handlers = dragObjects([g_startButton, g_otherButton]);
+		var posHandler = handlers[0];
+		var stateHandler = handlers[1];
+
+		posHandler({x: 0, y: 0});
+		stateHandler('up');
+
+		registerMouseEvent(canvas, 'mousedown', function() {
+			stateHandler('down');
+		});
+		registerMouseEvent(canvas, 'mouseup', function() {
+			stateHandler('up');
+		});
+		registerMouseEvent(canvas, 'mousemove', function(value) {
+			posHandler(value);
+		});
+
+/*		registerMouseEvent(canvas, 'mousedown', function(e) {
 			if (g_startButton.pointInside(e)) {
 				g_startButton.down = true;
 			}
@@ -335,16 +507,17 @@
 				setValue('down'); 
 			});
 			registerMouseEvent(document, 'mouseup', function() { setValue('up'); });
-		});
+		}); 
 
 		CM.Time.multiplier = 1;
-		CM.PreparationPhase.start(g_stateMachine, mousePosSignal, buttonStateSignal);
+		CM.PreparationPhase.start(g_stateMachine, mousePosSignal, buttonStateSignal); */
 
 		var fps = 0;
 		var frames = 0;
 		var time = 0;
 		var lastTime = performance.now();
 		(function animate() {
+			clear(context);
 			frame(context);
 
 			frames++;
